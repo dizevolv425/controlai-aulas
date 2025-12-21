@@ -15,8 +15,8 @@ export const createEmpresaSchema = z.object({
  * Schema para validar dados de criação de perfil
  */
 export const createPerfilSchema = z.object({
-  user_id: z.number().int().positive(),
-  empresa_id: z.number().int().positive(),
+  user_id: z.string().uuid(), // UUID do auth.users
+  empresa_id: z.number().int().positive().optional(), // Opcional na criação inicial
   role: z.enum(["master", "admin", "user"]).default("user"),
   email: z.string().email(),
   nome_completo: z.string().max(255).optional(),

@@ -34,7 +34,7 @@ export interface EdgeFunctionResponse<T = unknown> {
  * Dados do perfil do usuário autenticado
  */
 export interface UserProfile {
-  id: number;
+  id: string; // UUID
   empresa_id: number;
   role: UserRole;
   email: string;

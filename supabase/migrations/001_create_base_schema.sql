@@ -91,9 +91,10 @@ CREATE INDEX IF NOT EXISTS idx_empresas_is_active ON empresas(is_active);
 -- TABELA: perfis (Colaboradores/Usuários)
 -- Armazena os perfis dos usuários vinculados às empresas
 -- id referencia auth.users.id (FK para Supabase Auth)
+-- NOTA: auth.users.id é UUID, não BIGINT
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS perfis (
-  id BIGINT PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   empresa_id BIGINT NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
   role user_role NOT NULL DEFAULT 'user',
   email VARCHAR(255) NOT NULL,
@@ -127,7 +128,7 @@ CREATE TABLE IF NOT EXISTS agentes_ia (
   is_active BOOLEAN DEFAULT true,
   is_popular BOOLEAN DEFAULT false,
   cor VARCHAR(7),
-  created_by BIGINT REFERENCES perfis(id) ON DELETE SET NULL,
+  created_by UUID REFERENCES perfis(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -145,7 +146,7 @@ CREATE TABLE IF NOT EXISTS conversas (
   id BIGSERIAL PRIMARY KEY,
   conversation_uuid UUID UNIQUE DEFAULT uuid_generate_v4(),
   empresa_id BIGINT NOT NULL REFERENCES empresas(id) ON DELETE CASCADE,
-  user_id BIGINT NOT NULL REFERENCES perfis(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES perfis(id) ON DELETE CASCADE,
   agente_id BIGINT NOT NULL REFERENCES agentes_ia(id) ON DELETE RESTRICT,
   mensagens JSONB DEFAULT '[]'::jsonb,
   titulo VARCHAR(255),
@@ -192,7 +193,7 @@ CREATE INDEX IF NOT EXISTS idx_uso_recursos_empresa_mes ON uso_recursos(empresa_
 -- ============================================================================
 CREATE TABLE IF NOT EXISTS auditoria (
   id BIGSERIAL PRIMARY KEY,
-  user_id BIGINT REFERENCES perfis(id) ON DELETE SET NULL,
+  user_id UUID REFERENCES perfis(id) ON DELETE SET NULL,
   empresa_id BIGINT REFERENCES empresas(id) ON DELETE SET NULL,
   acao VARCHAR(255) NOT NULL,
   entidade_tipo VARCHAR(100),
