@@ -24,7 +24,7 @@ max_rows = 1000
 [db]
 # Configurações do banco de dados
 port = 54322
-major_version = 15
+major_version = 17
 
 [studio]
 # Configurações do Supabase Studio
@@ -46,5 +46,4 @@ file_size_limit = "50MiB"
 [edge_runtime]
 # Configurações do Edge Runtime
 enabled = true
-port = 54327
 

@@ -5,7 +5,19 @@ import { getSupabaseAdmin } from "../_shared/supabase-admin.ts";
 import { validateData, createPerfilSchema, createEmpresaSchema } from "../_shared/validation.ts";
 import type { EdgeFunctionResponse } from "../_shared/types.ts";
 
+// Headers CORS padrão
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
 Deno.serve(async (req) => {
+  // Handle CORS preflight
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
   // Permitir apenas POST
   if (req.method !== "POST") {
     return new Response(
@@ -15,7 +27,10 @@ Deno.serve(async (req) => {
       } as EdgeFunctionResponse),
       {
         status: 405,
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          ...corsHeaders,
+        },
       }
     );
   }
@@ -38,14 +53,17 @@ Deno.serve(async (req) => {
         } as EdgeFunctionResponse),
         {
           status: 400,
-          headers: { "Content-Type": "application/json" },
+          headers: { 
+            "Content-Type": "application/json",
+            ...corsHeaders,
+          },
         }
       );
     }
 
     const perfilValidation = validateData(createPerfilSchema, {
       user_id: body.user_id,
-      empresa_id: 0, // Será atualizado após criar empresa
+      // empresa_id não é passado aqui - será definido após criar a empresa
       role: "admin", // Primeiro usuário é sempre admin
       email: body.email,
       nome_completo: body.nome_completo || body.nome,
@@ -59,7 +77,10 @@ Deno.serve(async (req) => {
         } as EdgeFunctionResponse),
         {
           status: 400,
-          headers: { "Content-Type": "application/json" },
+          headers: { 
+            "Content-Type": "application/json",
+            ...corsHeaders,
+          },
         }
       );
     }
@@ -83,7 +104,10 @@ Deno.serve(async (req) => {
         } as EdgeFunctionResponse),
         {
           status: 200,
-          headers: { "Content-Type": "application/json" },
+          headers: { 
+            "Content-Type": "application/json",
+            ...corsHeaders,
+          },
         }
       );
     }
@@ -104,7 +128,10 @@ Deno.serve(async (req) => {
         } as EdgeFunctionResponse),
         {
           status: 500,
-          headers: { "Content-Type": "application/json" },
+          headers: { 
+            "Content-Type": "application/json",
+            ...corsHeaders,
+          },
         }
       );
     }
@@ -130,7 +157,10 @@ Deno.serve(async (req) => {
         } as EdgeFunctionResponse),
         {
           status: 500,
-          headers: { "Content-Type": "application/json" },
+          headers: { 
+            "Content-Type": "application/json",
+            ...corsHeaders,
+          },
         }
       );
     }
@@ -160,7 +190,10 @@ Deno.serve(async (req) => {
         } as EdgeFunctionResponse),
         {
           status: 500,
-          headers: { "Content-Type": "application/json" },
+          headers: { 
+            "Content-Type": "application/json",
+            ...corsHeaders,
+          },
         }
       );
     }
@@ -190,7 +223,10 @@ Deno.serve(async (req) => {
       } as EdgeFunctionResponse),
       {
         status: 200,
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          ...corsHeaders,
+        },
       }
     );
   } catch (error) {
@@ -201,7 +237,10 @@ Deno.serve(async (req) => {
       } as EdgeFunctionResponse),
       {
         status: 500,
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          ...corsHeaders,
+        },
       }
     );
   }

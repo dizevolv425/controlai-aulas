@@ -76,13 +76,13 @@ CREATE POLICY "empresas_update_admin_master"
 -- POLÍTICAS RLS: perfis
 -- ============================================================================
 
--- SELECT: Usuário pode ver perfis da própria empresa
+-- SELECT: Usuário pode ver próprio perfil e perfis da própria empresa
+-- Usa a função auxiliar para evitar recursão infinita
 CREATE POLICY "perfis_select_own_empresa"
   ON perfis FOR SELECT
   USING (
-    empresa_id IN (
-      SELECT empresa_id FROM perfis WHERE id = auth.uid()
-    )
+    id = auth.uid() -- Pode sempre ver próprio perfil (evita recursão)
+    OR empresa_id = user_empresa_id() -- Pode ver perfis da mesma empresa
   );
 
 -- UPDATE: Usuário pode atualizar próprio perfil; admin pode atualizar qualquer perfil da empresa

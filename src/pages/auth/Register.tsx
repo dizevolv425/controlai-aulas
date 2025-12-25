@@ -6,9 +6,10 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { registerSchema, type RegisterFormData } from "@/lib/validations/auth-schema";
-import { supabase } from "@/lib/supabase/client";
+import { supabase, getSupabaseClient } from "@/lib/supabase/client";
 import { AuthForm } from "@/components/auth/auth-form";
 import { Loader2 } from "lucide-react";
+import { provisionTenant } from "@/lib/api/provision-tenant";
 
 export default function Register() {
   const navigate = useNavigate();
@@ -28,16 +29,27 @@ export default function Register() {
     setError("");
 
     try {
-      // Criar usuário no Supabase Auth
-      // O trigger handle_new_user() será executado automaticamente após o cadastro
-      const { data: authData, error: authError } = await supabase.auth.signUp({
+      const supabaseClient = getSupabaseClient();
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+      if (!supabaseUrl || !anonKey) {
+        setError("Configuração incompleta. Verifique as variáveis de ambiente.");
+        setIsLoading(false);
+        return;
+      }
+
+      // 1. Criar usuário no Supabase Auth
+      // Nota: Se confirmação de email estiver habilitada no Supabase, 
+      // o usuário precisará confirmar antes de fazer login
+      const { data: authData, error: authError } = await supabaseClient.auth.signUp({
         email: data.email,
         password: data.password,
         options: {
           data: {
             nome_completo: data.name,
             empresa_nome: data.company,
-            nome: data.name, // Fallback
+            nome: data.name,
           },
         },
       });
@@ -48,13 +60,88 @@ export default function Register() {
         return;
       }
 
-      if (authData.user) {
-        // O provisionamento do tenant será feito via trigger/Edge Function
-        // Por enquanto, redirecionamos para login
-        navigate("/auth/login?registered=true");
+      if (!authData.user) {
+        setError("Erro ao criar usuário. Tente novamente.");
+        setIsLoading(false);
+        return;
       }
+
+      // 2. Provisionar tenant (criar empresa e perfil) via Edge Function
+      try {
+        // Obter token de autenticação do usuário recém-criado
+        // Se houver sessão, usar o token dela; caso contrário, tentar obter da sessão atual
+        let authToken: string | undefined;
+        if (authData.session?.access_token) {
+          authToken = authData.session.access_token;
+        } else {
+          // Tentar obter sessão atual (pode estar disponível mesmo sem confirmação de email)
+          const { data: sessionData } = await supabaseClient.auth.getSession();
+          authToken = sessionData?.session?.access_token;
+        }
+
+        const provisionResult = await provisionTenant(
+          supabaseUrl, 
+          anonKey, 
+          {
+            user_id: authData.user.id,
+            email: data.email,
+            nome: data.name,
+            nome_completo: data.name,
+            empresa_nome: data.company,
+          },
+          authToken // Passar o token de autenticação
+        );
+
+        if (!provisionResult.success) {
+          setError(provisionResult.error || "Erro ao criar empresa. Tente novamente.");
+          setIsLoading(false);
+          return;
+        }
+      } catch (provisionError) {
+        console.error("Erro ao provisionar tenant:", provisionError);
+        setError(
+          provisionError instanceof Error
+            ? provisionError.message
+            : "Erro ao criar empresa. Verifique sua conexão e tente novamente."
+        );
+        setIsLoading(false);
+        return;
+      }
+
+      // 3. Verificar se o usuário precisa confirmar email
+      // Se authData.session for null, significa que precisa confirmar email
+      if (!authData.session) {
+        // Usuário criado, mas precisa confirmar email
+        navigate("/auth/login?registered=true&confirm_email=true");
+        return;
+      }
+
+      // 4. Se já tiver sessão (confirmação desabilitada), fazer login automático
+      // Aguardar um pouco para garantir que o perfil foi criado
+      setTimeout(async () => {
+        const { data: perfil } = await supabaseClient
+          .from("perfis")
+          .select("role")
+          .eq("id", authData.user.id)
+          .single();
+
+        if (perfil) {
+          const role = (perfil as { role: "master" | "admin" | "user" }).role;
+          if (role === "master") {
+            navigate("/dashboard/master");
+          } else if (role === "admin") {
+            navigate("/dashboard/admin");
+          } else {
+            navigate("/dashboard/colaborador");
+          }
+        } else {
+          navigate("/dashboard");
+        }
+      }, 1000);
     } catch (err) {
-      setError("Erro inesperado ao criar conta. Tente novamente.");
+      setError(
+        err instanceof Error ? err.message : "Erro inesperado ao criar conta. Tente novamente."
+      );
       setIsLoading(false);
     }
   };
@@ -133,6 +220,9 @@ export default function Register() {
               {errors.password && (
                 <p className="text-sm text-destructive">{errors.password.message}</p>
               )}
+              <p className="text-xs text-muted-foreground">
+                A senha deve ter pelo menos 8 caracteres, incluindo: maiúscula, minúscula, número e caractere especial
+              </p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="confirmPassword">Confirmar Senha</Label>

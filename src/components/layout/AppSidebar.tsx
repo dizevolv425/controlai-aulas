@@ -1,5 +1,5 @@
-import { Home, MessageSquare, Settings, BarChart3, Users } from "lucide-react";
-import { NavLink } from "react-router-dom";
+import { Home, MessageSquare, Settings, BarChart3, Bot } from "lucide-react";
+import { useNavigate, useLocation } from "react-router-dom";
 import {
   Sidebar,
   SidebarContent,
@@ -15,12 +15,15 @@ import {
 const menuItems = [
   { title: "Dashboard", url: "/dashboard", icon: Home },
   { title: "Chat IA", url: "/dashboard/colaborador", icon: MessageSquare },
+  { title: "Agentes IA", url: "/dashboard/agentes", icon: Bot },
   { title: "Configurações", url: "/dashboard/admin", icon: Settings },
   { title: "Analytics", url: "/dashboard/master", icon: BarChart3 },
 ];
 
 export function AppSidebar() {
   const { state } = useSidebar();
+  const navigate = useNavigate();
+  const location = useLocation();
   const isCollapsed = state === "collapsed";
 
   return (
@@ -43,23 +46,24 @@ export function AppSidebar() {
           <SidebarGroupLabel>Menu Principal</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {menuItems.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild>
-                    <NavLink
-                      to={item.url}
-                      className={({ isActive }) =>
-                        isActive
-                          ? "bg-sidebar-accent text-sidebar-primary"
-                          : "hover:bg-sidebar-accent/50"
-                      }
+              {menuItems.map((item) => {
+                const isActive = location.pathname === item.url || 
+                                (item.url !== "/dashboard" && location.pathname.startsWith(item.url));
+                
+                return (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton
+                      isActive={isActive}
+                      onClick={() => {
+                        navigate(item.url);
+                      }}
                     >
                       <item.icon className="h-4 w-4" />
                       {!isCollapsed && <span>{item.title}</span>}
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                );
+              })}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

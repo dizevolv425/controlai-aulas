@@ -27,7 +27,9 @@ export function RoleGuard({ children, allowedRoles, fallbackPath = "/dashboard" 
   }
 
   if (!profile) {
-    return <Navigate to="/auth/login" replace />;
+    // Se o usuário está autenticado mas não tem perfil, redireciona para dashboard
+    // em vez de login (pois o problema pode ser que o perfil não foi criado ainda)
+    return <Navigate to="/dashboard" replace />;
   }
 
   if (!allowedRoles.includes(profile.role)) {

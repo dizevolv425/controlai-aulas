@@ -1,6 +1,7 @@
 import { ReactNode } from "react";
 import { Navigate } from "react-router-dom";
 import { useTenant } from "@/hooks/use-tenant";
+import { useAuth } from "@/hooks/use-auth";
 import { Loader2 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,7 @@ interface SubscriptionGuardProps {
 
 export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
   const { tenant, loading } = useTenant();
+  const { user } = useAuth();
 
   if (loading) {
     return (
@@ -22,6 +24,11 @@ export function SubscriptionGuard({ children }: SubscriptionGuardProps) {
   }
 
   if (!tenant) {
+    // Se o usuário está autenticado mas não tem tenant, redireciona para dashboard
+    // em vez de login (pois o problema pode ser que o perfil/tenant não foi criado ainda)
+    if (user) {
+      return <Navigate to="/dashboard" replace />;
+    }
     return <Navigate to="/auth/login" replace />;
   }
 

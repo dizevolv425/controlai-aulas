@@ -16,6 +16,7 @@ import Dashboard from "./pages/Dashboard";
 import Colaborador from "./pages/dashboard/Colaborador";
 import Admin from "./pages/dashboard/Admin";
 import Master from "./pages/dashboard/Master";
+import Agentes from "./pages/dashboard/Agentes";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -61,8 +62,18 @@ const App = () => (
                 <Route
                   path="master"
                   element={
-                    <RoleGuard allowedRoles={["master"]}>
+                    <RoleGuard allowedRoles={["admin", "master"]}>
                       <Master />
+                    </RoleGuard>
+                  }
+                />
+                <Route
+                  path="agentes"
+                  element={
+                    <RoleGuard allowedRoles={["admin", "master"]}>
+                      <SubscriptionGuard>
+                        <Agentes />
+                      </SubscriptionGuard>
                     </RoleGuard>
                   }
                 />

@@ -21,7 +21,13 @@ export default function Login() {
 
   useEffect(() => {
     if (searchParams.get("registered") === "true") {
-      setSuccess("Conta criada com sucesso! Faça login para continuar.");
+      if (searchParams.get("confirm_email") === "true") {
+        setSuccess(
+          "Conta criada com sucesso! Verifique seu email para confirmar a conta e depois faça login."
+        );
+      } else {
+        setSuccess("Conta criada com sucesso! Faça login para continuar.");
+      }
     }
   }, [searchParams]);
 

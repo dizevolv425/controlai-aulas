@@ -43,6 +43,8 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    setLoading(true);
+
     try {
       // Buscar perfil do usuário
       const { data: perfilData, error: perfilError } = await supabase
@@ -53,6 +55,11 @@ export function TenantProvider({ children }: { children: ReactNode }) {
 
       if (perfilError || !perfilData) {
         console.error("Erro ao buscar perfil:", perfilError);
+        // Se o erro for que não encontrou o perfil (PGRST116 = not found), 
+        // não é um erro crítico, apenas significa que o perfil ainda não foi criado
+        if (perfilError?.code !== 'PGRST116') {
+          console.error("Erro ao buscar perfil (não é 'não encontrado'):", perfilError);
+        }
         setTenant(null);
         setProfile(null);
         setLoading(false);
