@@ -139,24 +139,33 @@ export function AppSidebar() {
           <SidebarGroupLabel>Menu Principal</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {menuItems.map((item) => {
-                const isActive = location.pathname === item.url || 
-                                (item.url !== "/dashboard" && location.pathname.startsWith(item.url));
-                
-                return (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton
-                      isActive={isActive}
-                      onClick={() => {
-                        navigate(item.url);
-                      }}
-                    >
-                      <item.icon className="h-4 w-4" />
-                      {!isCollapsed && <span>{item.title}</span>}
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              })}
+              {menuItems
+                .filter((item) => {
+                  // Usuários com role "user" só veem Chats
+                  if (profile?.role === "user") {
+                    return item.url === "/dashboard/colaborador";
+                  }
+                  // Admins e Masters veem tudo
+                  return true;
+                })
+                .map((item) => {
+                  const isActive = location.pathname === item.url || 
+                                  (item.url !== "/dashboard" && location.pathname.startsWith(item.url));
+                  
+                  return (
+                    <SidebarMenuItem key={item.title}>
+                      <SidebarMenuButton
+                        isActive={isActive}
+                        onClick={() => {
+                          navigate(item.url);
+                        }}
+                      >
+                        <item.icon className="h-4 w-4" />
+                        {!isCollapsed && <span>{item.title}</span>}
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

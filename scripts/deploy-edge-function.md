@@ -1,136 +1,92 @@
-# Guia de Deploy da Edge Function provision-tenant
-
-Este guia fornece instruções passo a passo para fazer o deploy da Edge Function `provision-tenant` no Supabase.
+# Guia de Deploy da Edge Function create-user
 
 ## Pré-requisitos
 
-1. **Supabase CLI instalado**
+1. **Instalar Supabase CLI:**
    ```bash
+   # Windows (PowerShell)
+   scoop install supabase
+   
+   # Ou via npm
    npm install -g supabase
-   # ou
-   pnpm add -g supabase
+   
+   # Ou via Chocolatey
+   choco install supabase
    ```
 
-2. **Acesso ao projeto Supabase**
-   - Project Ref: `czzcwplxjljrbwbwgmdx`
-   - URL: `https://czzcwplxjljrbwbwgmdx.supabase.co`
-
-## Passo 1: Login no Supabase
-
-```bash
-pnpm run supabase:login
-# ou
-supabase login
-```
-
-Isso abrirá o navegador para autenticação. Faça login com sua conta Supabase.
-
-## Passo 2: Linkar o Projeto
-
-```bash
-pnpm run supabase:link
-# ou
-supabase link --project-ref czzcwplxjljrbwbwgmdx
-```
-
-Você precisará da senha do banco de dados (`SUPABASE_DB_PASSWORD`) que foi definida ao criar o projeto.
-
-## Passo 3: Configurar Variáveis de Ambiente
-
-Antes do deploy, configure as variáveis de ambiente no Dashboard do Supabase:
-
-1. Acesse: https://supabase.com/dashboard/project/czzcwplxjljrbwbwgmdx/settings/functions
-2. Ou via CLI:
+2. **Fazer login no Supabase:**
    ```bash
-   supabase secrets set SUPABASE_URL=https://czzcwplxjljrbwbwgmdx.supabase.co
-   supabase secrets set SUPABASE_SERVICE_ROLE_KEY=sua_service_role_key
-   supabase secrets set SUPABASE_ANON_KEY=sua_anon_key
+   supabase login
    ```
 
-**Onde encontrar as chaves:**
-- Dashboard: Settings > API
-- `SUPABASE_URL`: URL do projeto
-- `SUPABASE_SERVICE_ROLE_KEY`: service_role key (secreta)
-- `SUPABASE_ANON_KEY`: anon/public key
+3. **Linkar o projeto:**
+   ```bash
+   supabase link --project-ref <seu-project-ref>
+   ```
+   O `project-ref` pode ser encontrado na URL do seu projeto Supabase:
+   `https://app.supabase.com/project/<project-ref>`
 
-## Passo 4: Deploy da Edge Function
+## Deploy da Edge Function
 
+### Deploy da função create-user:
 ```bash
-pnpm run supabase:deploy:provision-tenant
-# ou
-supabase functions deploy provision-tenant
+supabase functions deploy create-user
 ```
 
-## Passo 5: Verificar o Deploy
-
-### Verificar via CLI:
+### Verificar se o deploy foi bem-sucedido:
 ```bash
-pnpm run supabase:functions:list
+supabase functions list
 ```
 
-### Verificar via Dashboard:
-https://supabase.com/dashboard/project/czzcwplxjljrbwbwgmdx/functions
+## Teste Local (Opcional)
 
-A função `provision-tenant` deve aparecer na lista.
+Para testar localmente antes do deploy:
 
-### Testar a função:
+1. **Iniciar Supabase local:**
+   ```bash
+   supabase start
+   ```
+
+2. **Servir a Edge Function localmente:**
+   ```bash
+   supabase functions serve create-user
+   ```
+
+3. **Testar a função:**
+   - A função estará disponível em: `http://localhost:54321/functions/v1/create-user`
+   - Use o frontend apontando para `http://localhost:54321`
+
+## Configuração de Variáveis de Ambiente
+
+A Edge Function precisa das seguintes variáveis de ambiente no Supabase:
+
+1. Acesse: **Supabase Dashboard > Edge Functions > create-user > Settings**
+2. As variáveis abaixo são configuradas automaticamente pelo Supabase:
+   - `SUPABASE_URL` - URL do projeto
+   - `SUPABASE_SERVICE_ROLE_KEY` - Chave service_role (automática)
+   - `SUPABASE_ANON_KEY` - Chave anon (automática)
+
+## Verificação de Logs
+
+Para ver os logs da Edge Function:
+
 ```bash
-curl -X POST https://czzcwplxjljrbwbwgmdx.supabase.co/functions/v1/provision-tenant \
-  -H "Content-Type: application/json" \
-  -H "apikey: SUA_ANON_KEY" \
-  -d '{"user_id":"test","email":"test@test.com","nome":"Test","nome_completo":"Test","empresa_nome":"Test"}'
+supabase functions logs create-user
 ```
 
-## Verificar Logs
-
-```bash
-pnpm run supabase:functions:logs
-# ou
-supabase functions logs provision-tenant
-```
+Ou no Dashboard:
+**Supabase Dashboard > Edge Functions > create-user > Logs**
 
 ## Troubleshooting
 
-### Erro: "Not logged in"
-```bash
-pnpm run supabase:login
-```
-
-### Erro: "Project not linked"
-```bash
-pnpm run supabase:link
-```
-
 ### Erro: "Function not found"
-Verifique se está no diretório raiz do projeto e se a função existe em `supabase/functions/provision-tenant/`
+- Verifique se o deploy foi concluído: `supabase functions list`
+- Aguarde alguns minutos após o deploy
 
-### Erro: "Missing environment variables"
-Configure as variáveis de ambiente no Dashboard ou via CLI (Passo 3)
+### Erro: "Permission denied"
+- Verifique se o usuário tem role admin ou master
+- Verifique se o token de autenticação está sendo enviado
 
-### Erro: "CORS error"
-O Supabase gerencia CORS automaticamente para Edge Functions. Se persistir, verifique:
-- Se a função está deployada corretamente
-- Se a URL está correta
-- Se não há firewall bloqueando
-
-## Comandos Úteis
-
-```bash
-# Listar todas as funções
-pnpm run supabase:functions:list
-
-# Ver logs de uma função
-pnpm run supabase:functions:logs
-
-# Deploy de uma função específica
-pnpm run supabase:deploy:provision-tenant
-
-# Ver status do projeto linkado
-supabase status
-
-# Remover link do projeto
-supabase unlink
-```
-
-
-
+### Erro: "Email already exists"
+- O email já está cadastrado no sistema
+- Use outro email ou edite o usuário existente
