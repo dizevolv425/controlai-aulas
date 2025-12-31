@@ -21,13 +21,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Save, Key, Users, Plus, Edit, Trash2 } from "lucide-react";
+import { Save, Key, Users, Plus, Edit, Trash2, CreditCard, Brain, BarChart3 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { useTenant } from "@/hooks/use-tenant";
 import { supabase } from "@/lib/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { createUser } from "@/lib/api/create-user";
+import { validateApiKey, maskApiKey } from "@/lib/validations/llm-schema";
 
 interface Usuario {
   id: string;
@@ -46,9 +47,17 @@ export default function Admin() {
   const { profile, tenant } = useTenant();
   const { toast } = useToast();
   const [apiKey, setApiKey] = useState("");
+  const [apiKeyProvider, setApiKeyProvider] = useState<"openai" | "claude">("openai");
+  const [apiKeyError, setApiKeyError] = useState("");
   const [enableByok, setEnableByok] = useState(false);
+  const [savingByok, setSavingByok] = useState(false);
+  const [contextoIA, setContextoIA] = useState("");
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingPlano, setLoadingPlano] = useState(true);
+  const [plano, setPlano] = useState<any>(null);
+  const [uso, setUso] = useState<any>(null);
+  const [agentesCount, setAgentesCount] = useState(0);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingUsuario, setEditingUsuario] = useState<Usuario | null>(null);
   const [formData, setFormData] = useState({
@@ -61,8 +70,127 @@ export default function Admin() {
   useEffect(() => {
     if (tenant) {
       loadUsuarios();
+      loadPlanoInfo();
+      loadContextoIA();
     }
   }, [tenant]);
+
+  const loadPlanoInfo = async () => {
+    if (!tenant) return;
+
+    try {
+      setLoadingPlano(true);
+      
+      // Buscar informações do plano
+      const { data: planoData, error: planoError } = await supabase
+        .from("planos")
+        .select("*")
+        .eq("id", tenant.plano_id)
+        .single();
+
+      if (planoError) throw planoError;
+      setPlano(planoData);
+
+      // Buscar uso atual do mês
+      const mesAtual = new Date();
+      const mesReferencia = `${mesAtual.getFullYear()}-${String(mesAtual.getMonth() + 1).padStart(2, "0")}-01`;
+      
+      const { data: usoData, error: usoError } = await supabase
+        .from("uso_recursos")
+        .select("*")
+        .eq("empresa_id", tenant.id)
+        .eq("mes_referencia", mesReferencia)
+        .single();
+
+      if (usoError && usoError.code !== "PGRST116") {
+        console.error("Erro ao buscar uso:", usoError);
+      }
+      setUso(usoData || { mensagens_enviadas: 0, tokens_consumidos: 0, agentes_ativos: 0, usuarios_ativos: 0 });
+
+      // Contar agentes ativos
+      const { count: agentesCount, error: agentesError } = await supabase
+        .from("agentes_ia")
+        .select("*", { count: "exact", head: true })
+        .eq("empresa_id", tenant.id)
+        .eq("is_active", true);
+
+      if (agentesError) {
+        console.error("Erro ao contar agentes:", agentesError);
+      }
+      setAgentesCount(agentesCount || 0);
+    } catch (error) {
+      console.error("Erro ao carregar informações do plano:", error);
+    } finally {
+      setLoadingPlano(false);
+    }
+  };
+
+  const loadContextoIA = async () => {
+    if (!tenant) return;
+
+    try {
+      const { data, error } = await supabase
+        .from("empresas")
+        .select("contexto_ia")
+        .eq("id", tenant.id)
+        .single();
+
+      if (error && error.code !== "PGRST116") {
+        console.error("Erro ao buscar contexto IA:", error);
+        return;
+      }
+
+      if (data?.contexto_ia) {
+        // Se contexto_ia é um objeto JSON, converter para string
+        if (typeof data.contexto_ia === "object") {
+          setContextoIA(JSON.stringify(data.contexto_ia, null, 2));
+        } else {
+          setContextoIA(data.contexto_ia);
+        }
+      }
+    } catch (error) {
+      console.error("Erro ao carregar contexto IA:", error);
+    }
+  };
+
+  const handleSaveContextoIA = async () => {
+    if (!tenant) return;
+
+    try {
+      let contextoToSave: any = contextoIA.trim();
+      
+      // Tentar parsear como JSON se possível
+      try {
+        contextoToSave = JSON.parse(contextoIA.trim());
+      } catch {
+        // Se não for JSON válido, salvar como string
+        contextoToSave = contextoIA.trim();
+      }
+
+      const { error } = await supabase
+        .from("empresas")
+        // @ts-ignore
+        .update({ 
+          contexto_ia: contextoToSave || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", tenant.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Sucesso",
+        description: "Contexto IA atualizado com sucesso",
+      });
+    } catch (error) {
+      console.error("Erro ao salvar contexto IA:", error);
+      toast({
+        title: "Erro",
+        description: "Não foi possível salvar o contexto IA",
+        variant: "destructive",
+      });
+    }
+  };
 
   const loadUsuarios = async () => {
     if (!tenant) return;
@@ -340,17 +468,146 @@ export default function Admin() {
         </p>
       </div>
 
-      <Tabs defaultValue="api" className="space-y-6">
+      <Tabs defaultValue="plano" className="space-y-6">
         <TabsList className="bg-muted">
+          <TabsTrigger value="plano">
+            <BarChart3 className="mr-2 h-4 w-4" />
+            Plano e Uso
+          </TabsTrigger>
           <TabsTrigger value="api">
             <Key className="mr-2 h-4 w-4" />
             API & BYOK
+          </TabsTrigger>
+          <TabsTrigger value="contexto">
+            <Brain className="mr-2 h-4 w-4" />
+            Contexto IA
           </TabsTrigger>
           <TabsTrigger value="usuarios">
             <Users className="mr-2 h-4 w-4" />
             Usuários
           </TabsTrigger>
+          <TabsTrigger value="billing">
+            <CreditCard className="mr-2 h-4 w-4" />
+            Faturamento
+          </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="plano" className="space-y-6">
+          <Card className="border-border">
+            <CardHeader>
+              <CardTitle>Plano Atual</CardTitle>
+              <CardDescription>
+                Informações sobre seu plano e uso de recursos
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {loadingPlano ? (
+                <div className="py-8 text-center">
+                  <p className="text-muted-foreground">Carregando informações do plano...</p>
+                </div>
+              ) : (
+                <>
+                  {plano && (
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between p-4 rounded-lg bg-muted/50">
+                        <div>
+                          <p className="text-sm text-muted-foreground">Plano</p>
+                          <p className="text-xl font-bold mt-1">{plano.nome}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm text-muted-foreground">Preço Mensal</p>
+                          <p className="text-xl font-bold mt-1">
+                            {plano.preco_mensal === 0
+                              ? "Grátis"
+                              : `R$ ${plano.preco_mensal.toFixed(2).replace(".", ",")}`}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div className="p-4 rounded-lg border border-border">
+                          <p className="text-sm text-muted-foreground mb-2">Usuários</p>
+                          <div className="flex items-center justify-between">
+                            <p className="text-2xl font-bold">
+                              {usuarios.filter((u) => u.status === "ativo").length}
+                            </p>
+                            <p className="text-sm text-muted-foreground">
+                              / {plano.max_usuarios === 0 ? "∞" : plano.max_usuarios}
+                            </p>
+                          </div>
+                          {plano.max_usuarios > 0 && (
+                            <div className="mt-2 h-2 bg-muted rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-green-500"
+                                style={{
+                                  width: `${Math.min(
+                                    (usuarios.filter((u) => u.status === "ativo").length / plano.max_usuarios) * 100,
+                                    100
+                                  )}%`,
+                                }}
+                              />
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="p-4 rounded-lg border border-border">
+                          <p className="text-sm text-muted-foreground mb-2">Agentes IA</p>
+                          <div className="flex items-center justify-between">
+                            <p className="text-2xl font-bold">{agentesCount}</p>
+                            <p className="text-sm text-muted-foreground">
+                              / {plano.max_agentes === 0 ? "∞" : plano.max_agentes}
+                            </p>
+                          </div>
+                          {plano.max_agentes > 0 && (
+                            <div className="mt-2 h-2 bg-muted rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-blue-500"
+                                style={{
+                                  width: `${Math.min((agentesCount / plano.max_agentes) * 100, 100)}%`,
+                                }}
+                              />
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="p-4 rounded-lg border border-border">
+                          <p className="text-sm text-muted-foreground mb-2">Mensagens/Mês</p>
+                          <div className="flex items-center justify-between">
+                            <p className="text-2xl font-bold">{uso?.mensagens_enviadas || 0}</p>
+                            <p className="text-sm text-muted-foreground">
+                              / {plano.limite_mensagens_mes === 0 ? "∞" : plano.limite_mensagens_mes}
+                            </p>
+                          </div>
+                          {plano.limite_mensagens_mes > 0 && (
+                            <div className="mt-2 h-2 bg-muted rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-yellow-500"
+                                style={{
+                                  width: `${Math.min(
+                                    ((uso?.mensagens_enviadas || 0) / plano.limite_mensagens_mes) * 100,
+                                    100
+                                  )}%`,
+                                }}
+                              />
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="p-4 rounded-lg border border-border">
+                          <p className="text-sm text-muted-foreground mb-2">Tokens Consumidos</p>
+                          <p className="text-2xl font-bold">
+                            {uso?.tokens_consumidos?.toLocaleString("pt-BR") || 0}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-1">Este mês</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         <TabsContent value="api" className="space-y-6">
           <Card className="border-border">
@@ -378,19 +635,106 @@ export default function Admin() {
               </div>
 
               {enableByok && (
-                <div className="space-y-2 pt-4 border-t border-border">
-                  <Label htmlFor="api-key">Chave API OpenAI</Label>
-                  <Input
-                    id="api-key"
-                    type="password"
-                    placeholder="sk-..."
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    className="bg-input border-border font-mono"
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Sua chave será criptografada e armazenada com segurança
-                  </p>
+                <div className="space-y-4 pt-4 border-t border-border">
+                  <div className="space-y-2">
+                    <Label htmlFor="api-provider">Provedor</Label>
+                    <Select
+                      value={apiKeyProvider}
+                      onValueChange={(value: "openai" | "claude") => {
+                        setApiKeyProvider(value);
+                        setApiKey("");
+                        setApiKeyError("");
+                      }}
+                    >
+                      <SelectTrigger id="api-provider">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="openai">OpenAI</SelectItem>
+                        <SelectItem value="claude">Claude (Anthropic)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="api-key">
+                      Chave API {apiKeyProvider === "openai" ? "OpenAI" : "Claude"}
+                    </Label>
+                    <Input
+                      id="api-key"
+                      type="password"
+                      placeholder={apiKeyProvider === "openai" ? "sk-..." : "sk-ant-..."}
+                      value={apiKey}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setApiKey(value);
+                        // Validação em tempo real
+                        if (value) {
+                          const validation = validateApiKey(apiKeyProvider, value);
+                          if (!validation.valid) {
+                            setApiKeyError(validation.error || "");
+                          } else {
+                            setApiKeyError("");
+                          }
+                        } else {
+                          setApiKeyError("");
+                        }
+                      }}
+                      className={`bg-input border-border font-mono ${
+                        apiKeyError ? "border-red-500" : ""
+                      }`}
+                    />
+                    {apiKeyError && (
+                      <p className="text-xs text-red-500">{apiKeyError}</p>
+                    )}
+                    <p className="text-xs text-muted-foreground">
+                      Sua chave será criptografada e armazenada com segurança. 
+                      {apiKeyProvider === "openai" 
+                        ? " Formato esperado: sk-..." 
+                        : " Formato esperado: sk-ant-..."}
+                    </p>
+                  </div>
+
+                  <Button
+                    onClick={async () => {
+                      if (!tenant) return;
+                      
+                      // Validação final
+                      const validation = validateApiKey(apiKeyProvider, apiKey);
+                      if (!validation.valid) {
+                        toast({
+                          title: "Erro",
+                          description: validation.error || "Chave API inválida",
+                          variant: "destructive",
+                        });
+                        return;
+                      }
+
+                      setSavingByok(true);
+                      try {
+                        // TODO: Implementar Edge Function store-byok-key no Épico 4
+                        // Por enquanto, apenas mostrar mensagem
+                        toast({
+                          title: "Em desenvolvimento",
+                          description: "A funcionalidade de armazenamento criptografado será implementada no Épico 4",
+                        });
+                      } catch (error) {
+                        console.error("Erro ao salvar chave BYOK:", error);
+                        toast({
+                          title: "Erro",
+                          description: "Não foi possível salvar a chave API",
+                          variant: "destructive",
+                        });
+                      } finally {
+                        setSavingByok(false);
+                      }
+                    }}
+                    disabled={!apiKey || !!apiKeyError || savingByok}
+                    className="bg-green-600 hover:bg-green-700"
+                  >
+                    <Save className="mr-2 h-4 w-4" />
+                    {savingByok ? "Salvando..." : "Salvar Chave API"}
+                  </Button>
                 </div>
               )}
 
@@ -407,6 +751,37 @@ export default function Admin() {
                   </div>
                 </div>
               </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="contexto" className="space-y-6">
+          <Card className="border-border">
+            <CardHeader>
+              <CardTitle>Contexto IA da Empresa</CardTitle>
+              <CardDescription>
+                Configure o contexto padrão que será injetado em todas as conversas da sua empresa
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="contexto-ia">System Prompt / Contexto</Label>
+                <Textarea
+                  id="contexto-ia"
+                  placeholder="Ex: Você é um assistente especializado em atendimento ao cliente da empresa XYZ. Sempre seja cordial e profissional..."
+                  value={contextoIA}
+                  onChange={(e) => setContextoIA(e.target.value)}
+                  className="min-h-[200px] font-mono text-sm"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Este contexto será injetado automaticamente em todas as conversas dos colaboradores da sua empresa.
+                  Você pode usar JSON ou texto simples.
+                </p>
+              </div>
+              <Button onClick={handleSaveContextoIA} className="bg-green-600 hover:bg-green-700">
+                <Save className="mr-2 h-4 w-4" />
+                Salvar Contexto
+              </Button>
             </CardContent>
           </Card>
         </TabsContent>
@@ -523,6 +898,49 @@ export default function Admin() {
               ))}
             </div>
           )}
+        </TabsContent>
+
+        <TabsContent value="billing" className="space-y-6">
+          <Card className="border-border">
+            <CardHeader>
+              <CardTitle>Faturamento e Assinatura</CardTitle>
+              <CardDescription>
+                Gerencie sua assinatura e métodos de pagamento
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="p-4 rounded-lg bg-muted/50">
+                <p className="text-sm text-muted-foreground mb-2">Portal do Cliente Stripe</p>
+                <p className="text-sm mb-4">
+                  Acesse o portal do Stripe para gerenciar sua assinatura, método de pagamento e histórico de faturas.
+                </p>
+                <Button
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => {
+                    toast({
+                      title: "Em desenvolvimento",
+                      description: "A integração com o Stripe Portal será implementada no Épico 3",
+                    });
+                  }}
+                >
+                  <CreditCard className="mr-2 h-4 w-4" />
+                  Abrir Portal do Cliente
+                </Button>
+              </div>
+              {plano && (
+                <div className="p-4 rounded-lg border border-border">
+                  <p className="text-sm text-muted-foreground">Plano Atual</p>
+                  <p className="text-lg font-semibold mt-1">{plano.nome}</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    {plano.preco_mensal === 0
+                      ? "Plano gratuito"
+                      : `R$ ${plano.preco_mensal.toFixed(2).replace(".", ",")}/mês`}
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
 
