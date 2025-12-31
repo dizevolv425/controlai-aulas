@@ -50,11 +50,18 @@ export function AppSidebar() {
   const location = useLocation();
   const isCollapsed = state === "collapsed";
   const { user } = useAuth();
-  const { profile } = useTenant();
+  const { profile, loading: profileLoading } = useTenant();
   const [conversas, setConversas] = useState<ConversaWithAgente[]>([]);
   const [loadingConversas, setLoadingConversas] = useState(false);
 
   const isChatsPage = location.pathname === "/dashboard/colaborador";
+
+  // Debug: Log do profile e role
+  useEffect(() => {
+    console.log("AppSidebar - Profile:", profile);
+    console.log("AppSidebar - Role:", profile?.role);
+    console.log("AppSidebar - Profile Loading:", profileLoading);
+  }, [profile, profileLoading]);
 
   useEffect(() => {
     if (isChatsPage && user && profile) {
@@ -139,16 +146,58 @@ export function AppSidebar() {
           <SidebarGroupLabel>Menu Principal</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {menuItems
-                .filter((item) => {
-                  // Usuários com role "user" só veem Chats
-                  if (profile?.role === "user") {
-                    return item.url === "/dashboard/colaborador";
-                  }
-                  // Admins e Masters veem tudo
-                  return true;
-                })
-                .map((item) => {
+              {(() => {
+                // Se o profile ainda está carregando, mostra apenas Dashboard
+                if (profileLoading || !profile) {
+                  return menuItems
+                    .filter((item) => item.url === "/dashboard")
+                    .map((item) => {
+                      const isActive = location.pathname === item.url || 
+                                      (item.url !== "/dashboard" && location.pathname.startsWith(item.url));
+                      
+                      return (
+                        <SidebarMenuItem key={item.title}>
+                          <SidebarMenuButton
+                            isActive={isActive}
+                            onClick={() => {
+                              navigate(item.url);
+                            }}
+                          >
+                            <item.icon className="h-4 w-4" />
+                            {!isCollapsed && <span>{item.title}</span>}
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      );
+                    });
+                }
+                
+                // Usuários com role "user" só veem Chats
+                const role = profile.role?.toLowerCase() || "";
+                console.log("AppSidebar - Role filtrado:", role);
+                if (role === "user") {
+                  return menuItems
+                    .filter((item) => item.url === "/dashboard/colaborador")
+                    .map((item) => {
+                      const isActive = location.pathname === item.url || 
+                                      (item.url !== "/dashboard" && location.pathname.startsWith(item.url));
+                      
+                      return (
+                        <SidebarMenuItem key={item.title}>
+                          <SidebarMenuButton
+                            isActive={isActive}
+                            onClick={() => {
+                              navigate(item.url);
+                            }}
+                          >
+                            <item.icon className="h-4 w-4" />
+                            {!isCollapsed && <span>{item.title}</span>}
+                          </SidebarMenuButton>
+                        </SidebarMenuItem>
+                      );
+                }
+                
+                // Admins e Masters veem tudo
+                return menuItems.map((item) => {
                   const isActive = location.pathname === item.url || 
                                   (item.url !== "/dashboard" && location.pathname.startsWith(item.url));
                   
@@ -165,7 +214,8 @@ export function AppSidebar() {
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   );
-                })}
+                });
+              })()}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
