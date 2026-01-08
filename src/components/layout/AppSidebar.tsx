@@ -194,6 +194,7 @@ export function AppSidebar() {
                           </SidebarMenuButton>
                         </SidebarMenuItem>
                       );
+                    });
                 }
                 
                 // Admins e Masters veem tudo

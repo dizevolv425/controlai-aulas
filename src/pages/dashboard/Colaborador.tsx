@@ -1,7 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Send, Bot, Shield, Coins, Cog, ShoppingCart, Rocket, ChevronDown, ChevronUp } from "lucide-react";
+import { Send, Bot, Shield, Coins, Cog, ShoppingCart, Rocket, ChevronDown, ChevronUp, X, Loader2 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useTenant } from "@/hooks/use-tenant";
 import { supabase } from "@/lib/supabase/client";
@@ -11,6 +11,15 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { invokeLLM } from "@/lib/api/invoke-llm";
+import { useToast } from "@/hooks/use-toast";
 
 interface Agente {
   id: number;
@@ -20,6 +29,13 @@ interface Agente {
   cor: string | null;
   is_active: boolean;
   is_popular: boolean;
+}
+
+interface Mensagem {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  timestamp: Date;
 }
 
 // Mapeamento de ícones baseado no nome do agente
@@ -73,11 +89,17 @@ const getAgentColor = (nome: string, cor: string | null) => {
 export default function Colaborador() {
   const { user } = useAuth();
   const { profile, tenant } = useTenant();
+  const { toast } = useToast();
   const [agentes, setAgentes] = useState<Agente[]>([]);
   const [agenteSelecionado, setAgenteSelecionado] = useState<Agente | null>(null);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(true);
   const [showAgentes, setShowAgentes] = useState(false);
+  const [chatDialogOpen, setChatDialogOpen] = useState(false);
+  const [mensagens, setMensagens] = useState<Mensagem[]>([]);
+  const [enviandoMensagem, setEnviandoMensagem] = useState(false);
+  const [conversationUuid, setConversationUuid] = useState<string | null>(null);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (tenant) {
@@ -113,13 +135,78 @@ export default function Colaborador() {
   const handleSelectAgente = (agente: Agente) => {
     setAgenteSelecionado(agente);
     setShowAgentes(false);
+    setChatDialogOpen(true);
+    // Limpar mensagens anteriores ao selecionar novo agente
+    setMensagens([]);
+    setConversationUuid(null);
   };
 
-  const handleSend = () => {
-    if (!input.trim() || !agenteSelecionado) return;
-    // TODO: Implementar envio de mensagem
-    console.log("Enviar mensagem:", input, "para agente:", agenteSelecionado.nome);
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [mensagens]);
+
+  const handleSend = async () => {
+    if (!input.trim() || !agenteSelecionado || enviandoMensagem) return;
+
+    const mensagemUsuario = input.trim();
     setInput("");
+    setEnviandoMensagem(true);
+
+    // Adicionar mensagem do usuário ao histórico
+    const novaMensagemUsuario: Mensagem = {
+      id: `user-${Date.now()}`,
+      role: "user",
+      content: mensagemUsuario,
+      timestamp: new Date(),
+    };
+
+    setMensagens((prev) => [...prev, novaMensagemUsuario]);
+
+    try {
+      // Chamar Edge Function invoke-llm
+      const response = await invokeLLM({
+        agente_id: agenteSelecionado.id,
+        message: mensagemUsuario,
+        conversation_uuid: conversationUuid || undefined,
+      });
+
+      if (!response.success || !response.data) {
+        throw new Error(response.error || "Erro ao obter resposta da IA");
+      }
+
+      // Adicionar resposta da IA ao histórico
+      const novaMensagemIA: Mensagem = {
+        id: `assistant-${Date.now()}`,
+        role: "assistant",
+        content: response.data.response,
+        timestamp: new Date(),
+      };
+
+      setMensagens((prev) => [...prev, novaMensagemIA]);
+
+      // Se for a primeira mensagem, gerar UUID para a conversa
+      if (!conversationUuid) {
+        // TODO: Criar conversa no banco e obter UUID real (será implementado no Épico 4)
+        // Por enquanto, usar UUID temporário
+        setConversationUuid(crypto.randomUUID());
+      }
+    } catch (error) {
+      console.error("Erro ao enviar mensagem:", error);
+      toast({
+        title: "Erro",
+        description: error instanceof Error ? error.message : "Não foi possível enviar a mensagem",
+        variant: "destructive",
+      });
+
+      // Remover mensagem do usuário se falhar
+      setMensagens((prev) => prev.filter((msg) => msg.id !== novaMensagemUsuario.id));
+    } finally {
+      setEnviandoMensagem(false);
+    }
   };
 
   const nomeUsuario = profile?.nome_completo || profile?.email || user?.email || "Usuário";
@@ -271,6 +358,121 @@ export default function Colaborador() {
           <span className="font-semibold text-foreground">{agenteSelecionado.nome}</span>
         </div>
       )}
+
+      {/* Dialog de Chat */}
+      <Dialog open={chatDialogOpen} onOpenChange={setChatDialogOpen}>
+        <DialogContent className="max-w-3xl max-h-[80vh] flex flex-col">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-3">
+              {agenteSelecionado && (
+                <>
+                  {agenteSelecionado.icone_url && agenteSelecionado.icone_url.startsWith("http") ? (
+                    <img
+                      src={agenteSelecionado.icone_url}
+                      alt={agenteSelecionado.nome}
+                      className="h-8 w-8 rounded-lg object-cover"
+                    />
+                  ) : (
+                    <div className={`h-8 w-8 rounded-lg ${getAgentColor(agenteSelecionado.nome, agenteSelecionado.cor)} flex items-center justify-center`}>
+                      {(() => {
+                        const IconComponent = getAgentIcon(agenteSelecionado.nome, agenteSelecionado.icone_url) || Bot;
+                        return <IconComponent className="h-4 w-4 text-white" />;
+                      })()}
+                    </div>
+                  )}
+                  <span>{agenteSelecionado.nome}</span>
+                </>
+              )}
+            </DialogTitle>
+            {agenteSelecionado?.descricao && (
+              <DialogDescription>{agenteSelecionado.descricao}</DialogDescription>
+            )}
+          </DialogHeader>
+
+          {/* Área de Mensagens */}
+          <div className="flex-1 overflow-y-auto min-h-[400px] max-h-[500px] space-y-4 p-4 border rounded-lg bg-muted/30">
+            {mensagens.length === 0 ? (
+              <div className="flex items-center justify-center h-full text-muted-foreground">
+                <div className="text-center">
+                  <Bot className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p className="text-lg font-medium">Inicie uma conversa</p>
+                  <p className="text-sm mt-2">
+                    Envie uma mensagem para começar a conversar com {agenteSelecionado?.nome}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <>
+                {mensagens.map((mensagem) => (
+                  <div
+                    key={mensagem.id}
+                    className={`flex ${mensagem.role === "user" ? "justify-end" : "justify-start"}`}
+                  >
+                    <div
+                      className={`max-w-[80%] rounded-lg p-3 ${
+                        mensagem.role === "user"
+                          ? "bg-green-600 text-white"
+                          : "bg-background border border-border"
+                      }`}
+                    >
+                      <div className="text-sm whitespace-pre-wrap break-words">
+                        {mensagem.content}
+                      </div>
+                      <div
+                        className={`text-xs mt-1 ${
+                          mensagem.role === "user" ? "text-green-100" : "text-muted-foreground"
+                        }`}
+                      >
+                        {mensagem.timestamp.toLocaleTimeString("pt-BR", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {enviandoMensagem && (
+                  <div className="flex justify-start">
+                    <div className="bg-background border border-border rounded-lg p-3">
+                      <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                    </div>
+                  </div>
+                )}
+                <div ref={messagesEndRef} />
+              </>
+            )}
+          </div>
+
+          {/* Área de Input */}
+          <div className="flex gap-2 pt-4 border-t">
+            <Textarea
+              placeholder="Digite sua mensagem..."
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSend();
+                }
+              }}
+              disabled={enviandoMensagem || !agenteSelecionado}
+              className="min-h-[80px] bg-input border-border resize-none"
+            />
+            <Button
+              onClick={handleSend}
+              disabled={!input.trim() || !agenteSelecionado || enviandoMensagem}
+              className="bg-green-600 hover:bg-green-700 text-white h-[80px] w-[80px] rounded-full shrink-0"
+              size="icon"
+            >
+              {enviandoMensagem ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <Send className="h-5 w-5" />
+              )}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

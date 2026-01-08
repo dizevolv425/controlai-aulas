@@ -20,11 +20,19 @@ const claudeKeySchema = z
   .min(20, "Chave Claude muito curta")
   .max(200, "Chave Claude muito longa");
 
+// Validação para chave Gemini (Google)
+// Nota: Chaves Gemini não têm prefixo fixo, são geralmente strings longas
+const geminiKeySchema = z
+  .string()
+  .min(1, "A chave API é obrigatória")
+  .min(20, "Chave Gemini muito curta")
+  .max(200, "Chave Gemini muito longa");
+
 /**
  * Schema para formulário BYOK
  */
 export const byokFormSchema = z.object({
-  provider: z.enum(["openai", "claude"], {
+  provider: z.enum(["openai", "claude", "gemini"], {
     required_error: "Selecione um provedor",
   }),
   api_key: z.string().min(1, "A chave API é obrigatória"),
@@ -35,6 +43,9 @@ export const byokFormSchema = z.object({
     }
     if (data.provider === "claude") {
       return claudeKeySchema.safeParse(data.api_key).success;
+    }
+    if (data.provider === "gemini") {
+      return geminiKeySchema.safeParse(data.api_key).success;
     }
     return true;
   },
@@ -50,7 +61,7 @@ export type ByokFormData = z.infer<typeof byokFormSchema>;
  * Valida uma chave API sem usar o schema completo
  * Útil para validação em tempo real
  */
-export function validateApiKey(provider: "openai" | "claude", key: string): {
+export function validateApiKey(provider: "openai" | "claude" | "gemini", key: string): {
   valid: boolean;
   error?: string;
 } {
@@ -79,6 +90,16 @@ export function validateApiKey(provider: "openai" | "claude", key: string): {
     }
     if (key.length > 200) {
       return { valid: false, error: "Chave Claude muito longa" };
+    }
+  }
+
+  if (provider === "gemini") {
+    // Chaves Gemini não têm prefixo fixo, são geralmente strings longas
+    if (key.length < 20) {
+      return { valid: false, error: "Chave Gemini muito curta" };
+    }
+    if (key.length > 200) {
+      return { valid: false, error: "Chave Gemini muito longa" };
     }
   }
 

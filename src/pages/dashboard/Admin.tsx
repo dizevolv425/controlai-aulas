@@ -29,6 +29,7 @@ import { supabase } from "@/lib/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { createUser } from "@/lib/api/create-user";
 import { validateApiKey, maskApiKey } from "@/lib/validations/llm-schema";
+import { storeByokKey } from "@/lib/api/store-byok-key";
 
 interface Usuario {
   id: string;
@@ -47,7 +48,7 @@ export default function Admin() {
   const { profile, tenant } = useTenant();
   const { toast } = useToast();
   const [apiKey, setApiKey] = useState("");
-  const [apiKeyProvider, setApiKeyProvider] = useState<"openai" | "claude">("openai");
+  const [apiKeyProvider, setApiKeyProvider] = useState<"openai" | "claude" | "gemini">("openai");
   const [apiKeyError, setApiKeyError] = useState("");
   const [enableByok, setEnableByok] = useState(false);
   const [savingByok, setSavingByok] = useState(false);
@@ -619,12 +620,12 @@ export default function Admin() {
             </CardHeader>
             <CardContent className="space-y-6">
               <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
+                  <div className="space-y-0.5">
                   <Label htmlFor="byok-toggle" className="text-base font-medium">
                     Habilitar BYOK
                   </Label>
                   <p className="text-sm text-muted-foreground">
-                    Utilize sua própria chave de API OpenAI
+                    Utilize sua própria chave de API LLM (OpenAI, Claude ou Gemini)
                   </p>
                 </div>
                 <Switch
@@ -640,7 +641,7 @@ export default function Admin() {
                     <Label htmlFor="api-provider">Provedor</Label>
                     <Select
                       value={apiKeyProvider}
-                      onValueChange={(value: "openai" | "claude") => {
+                      onValueChange={(value: "openai" | "claude" | "gemini") => {
                         setApiKeyProvider(value);
                         setApiKey("");
                         setApiKeyError("");
@@ -652,18 +653,25 @@ export default function Admin() {
                       <SelectContent>
                         <SelectItem value="openai">OpenAI</SelectItem>
                         <SelectItem value="claude">Claude (Anthropic)</SelectItem>
+                        <SelectItem value="gemini">Gemini (Google)</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
 
                   <div className="space-y-2">
                     <Label htmlFor="api-key">
-                      Chave API {apiKeyProvider === "openai" ? "OpenAI" : "Claude"}
+                      Chave API {apiKeyProvider === "openai" ? "OpenAI" : apiKeyProvider === "claude" ? "Claude" : "Gemini"}
                     </Label>
                     <Input
                       id="api-key"
                       type="password"
-                      placeholder={apiKeyProvider === "openai" ? "sk-..." : "sk-ant-..."}
+                      placeholder={
+                        apiKeyProvider === "openai" 
+                          ? "sk-..." 
+                          : apiKeyProvider === "claude" 
+                          ? "sk-ant-..." 
+                          : "Sua chave Gemini..."
+                      }
                       value={apiKey}
                       onChange={(e) => {
                         const value = e.target.value;
@@ -691,7 +699,9 @@ export default function Admin() {
                       Sua chave será criptografada e armazenada com segurança. 
                       {apiKeyProvider === "openai" 
                         ? " Formato esperado: sk-..." 
-                        : " Formato esperado: sk-ant-..."}
+                        : apiKeyProvider === "claude"
+                        ? " Formato esperado: sk-ant-..."
+                        : " Chave Gemini obtida no Google AI Studio"}
                     </p>
                   </div>
 
@@ -712,17 +722,30 @@ export default function Admin() {
 
                       setSavingByok(true);
                       try {
-                        // TODO: Implementar Edge Function store-byok-key no Épico 4
-                        // Por enquanto, apenas mostrar mensagem
-                        toast({
-                          title: "Em desenvolvimento",
-                          description: "A funcionalidade de armazenamento criptografado será implementada no Épico 4",
+                        // Chamar Edge Function para armazenar chave criptografada
+                        const result = await storeByokKey({
+                          provider: apiKeyProvider,
+                          api_key: apiKey,
                         });
+
+                        if (!result.success) {
+                          throw new Error(result.error || "Erro ao armazenar chave");
+                        }
+
+                        toast({
+                          title: "Sucesso",
+                          description: result.message || "Chave API armazenada com sucesso",
+                        });
+
+                        // Limpar formulário após sucesso
+                        setApiKey("");
+                        setApiKeyError("");
+                        setEnableByok(false);
                       } catch (error) {
                         console.error("Erro ao salvar chave BYOK:", error);
                         toast({
                           title: "Erro",
-                          description: "Não foi possível salvar a chave API",
+                          description: error instanceof Error ? error.message : "Não foi possível salvar a chave API",
                           variant: "destructive",
                         });
                       } finally {

@@ -64,7 +64,7 @@ export const updateAgenteIASchema = z.object({
  * Schema para validar dados de armazenamento de chave BYOK
  */
 export const storeByokKeySchema = z.object({
-  provider: z.enum(["openai", "claude"]),
+  provider: z.enum(["openai", "claude", "gemini"]),
   api_key: z.string().min(1),
 });
 
